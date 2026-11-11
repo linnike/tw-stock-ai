@@ -8,7 +8,7 @@ from config import GEMINI_MODEL, SYSTEM_PROMPT
 # 免費版額度最寬鬆、速度最快的兩個模型
 FALLBACK_MODELS = [GEMINI_MODEL, "gemini-2.5-flash-lite"]
 
-def run_gemini_analysis_stream(api_key, stock_data_text, is_batch=False):
+def run_gemini_analysis(api_key, stock_data_text, is_batch=False):
     client = genai.Client(api_key=api_key)
 
     if is_batch:
@@ -22,7 +22,7 @@ def run_gemini_analysis_stream(api_key, stock_data_text, is_batch=False):
             SYSTEM_PROMPT + "\n\n請根據以下真實盤後數據進行完整分析：\n" + stock_data_text
         )
 
-    # 關閉深度思考延遲，讓免費版模型直接秒速吐字
+    # 關閉深度思考延遲，讓免費版模型直接用最高速生成
     gen_config = types.GenerateContentConfig(
         temperature=0.2,
         thinking_config=types.ThinkingConfig(thinking_budget=0),
@@ -31,19 +31,14 @@ def run_gemini_analysis_stream(api_key, stock_data_text, is_batch=False):
     last_error = None
     for model_name in dict.fromkeys(FALLBACK_MODELS):
         try:
-            st.toast(f"🤖 正在連線 {model_name} 進行分析...", icon="⏳")
-            response = client.models.generate_content_stream(
+            st.toast(f"🤖 正在呼叫 {model_name} 生成報告...", icon="⚡")
+            response = client.models.generate_content(
                 model=model_name,
                 contents=prompt,
                 config=gen_config,
             )
-            has_output = False
-            for chunk in response:
-                if chunk.text:
-                    has_output = True
-                    yield chunk.text
-            if has_output:
-                return
+            if response and response.text:
+                return response.text
         except Exception as e:
             last_error = e
             err_str = str(e)

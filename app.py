@@ -7,7 +7,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
 
-from ai_service import run_gemini_analysis_stream
+from ai_service import run_gemini_analysis
 from data_fetcher import fetch_stock_package, get_stock_name_map
 
 mimetypes.add_type("application/javascript", ".js")
@@ -81,7 +81,6 @@ with st.sidebar:
     else:
         stock_id = selected_label.split()[0]
 
-    # 回溯天數預設改為 250 天
     days_back = st.slider("回溯天數", 250, 730, 250)
 
     st.divider()
@@ -188,11 +187,12 @@ with main_tab1:
             if not gemini_key:
                 st.error("請先在 .streamlit/secrets.toml 中設定 GEMINI_API_KEY！")
             else:
-                try:
-                    # 使用 write_stream 實現打字機即時逐字輸出
-                    st.write_stream(run_gemini_analysis_stream(gemini_key, pkg["data_text"], is_batch=False))
-                except Exception as e:
-                    st.error(f"AI 分析發生錯誤：{e}")
+                with st.spinner("⚡ AI 正在快速運算評分中（約 3～8 秒）..."):
+                    try:
+                        report = run_gemini_analysis(gemini_key, pkg["data_text"], is_batch=False)
+                        st.markdown(report)
+                    except Exception as e:
+                        st.error(f"AI 分析發生錯誤：{e}")
 
         with st.expander("檢視傳送給 AI 的原始盤後數據包"):
             st.code(pkg["data_text"], language="text")
@@ -211,16 +211,17 @@ with main_tab2:
             results_container = st.container()
 
             for idx, sid in enumerate(stock_list):
-                with st.spinner(f"正在抓取 {sid} 數據 ({idx+1}/{len(stock_list)})..."):
+                with st.spinner(f"正在抓取並評分 {sid} ({idx+1}/{len(stock_list)})..."):
                     pkg = fetch_stock_package(sid, days_back, finmind_token)
-                if pkg is None:
-                    results_container.warning(f"❌ **{sid}**：查無資料或代號錯誤。")
-                else:
-                    try:
-                        with results_container.expander(f"📌 {pkg['title']} 掃描結果（收盤 {pkg['day'].iloc[-1]['Close']:.2f} 元）", expanded=True):
-                            st.write_stream(run_gemini_analysis_stream(gemini_key, pkg["data_text"], is_batch=True))
-                    except Exception as e:
-                        results_container.error(f"❌ **{sid}** 分析失敗：{e}")
+                    if pkg is None:
+                        results_container.warning(f"❌ **{sid}**：查無資料或代號錯誤。")
+                    else:
+                        try:
+                            summary_res = run_gemini_analysis(gemini_key, pkg["data_text"], is_batch=True)
+                            with results_container.expander(f"📌 {pkg['title']} 掃描結果（收盤 {pkg['day'].iloc[-1]['Close']:.2f} 元）", expanded=True):
+                                st.markdown(summary_res)
+                        except Exception as e:
+                            results_container.error(f"❌ **{sid}** 分析失敗：{e}")
                 progress_bar.progress((idx + 1) / len(stock_list))
                 time.sleep(1)
             st.success("✅ 所有自選股批量掃描完成！")
