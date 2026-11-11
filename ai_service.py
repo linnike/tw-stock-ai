@@ -5,15 +5,11 @@ from google.genai import types
 import streamlit as st
 from config import GEMINI_MODEL, SYSTEM_PROMPT
 
-# 現行穩定且快速的備援模型清單
-FALLBACK_MODELS = [GEMINI_MODEL, "gemini-2.5-flash-lite", "gemini-2.5-pro"]
+# 免費版額度最寬鬆、速度最快的兩個模型
+FALLBACK_MODELS = [GEMINI_MODEL, "gemini-2.5-flash-lite"]
 
 def run_gemini_analysis_stream(api_key, stock_data_text, is_batch=False):
-    # 設定 15 秒連線逾時，避免伺服器無回應時無限期卡死
-    client = genai.Client(
-        api_key=api_key,
-        http_options=types.HttpOptions(timeout=15.0),
-    )
+    client = genai.Client(api_key=api_key)
 
     if is_batch:
         prompt = (
@@ -26,12 +22,20 @@ def run_gemini_analysis_stream(api_key, stock_data_text, is_batch=False):
             SYSTEM_PROMPT + "\n\n請根據以下真實盤後數據進行完整分析：\n" + stock_data_text
         )
 
+    # 關閉深度思考延遲，讓免費版模型直接秒速吐字
+    gen_config = types.GenerateContentConfig(
+        temperature=0.2,
+        thinking_config=types.ThinkingConfig(thinking_budget=0),
+    )
+
     last_error = None
     for model_name in dict.fromkeys(FALLBACK_MODELS):
         try:
             st.toast(f"🤖 正在連線 {model_name} 進行分析...", icon="⏳")
             response = client.models.generate_content_stream(
-                model=model_name, contents=prompt
+                model=model_name,
+                contents=prompt,
+                config=gen_config,
             )
             has_output = False
             for chunk in response:
@@ -42,8 +46,12 @@ def run_gemini_analysis_stream(api_key, stock_data_text, is_batch=False):
                 return
         except Exception as e:
             last_error = e
-            st.toast(f"⚠️ {model_name} 忙碌或逾時，自動切換備援模型...", icon="🔄")
-            time.sleep(1)
+            err_str = str(e)
+            if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+                st.toast("⚠️ 免費版每分鐘請求次數已滿，請稍等 30 秒再試！", icon="🛑")
+            else:
+                st.toast(f"⚠️ {model_name} 暫時忙碌，切換備援模型...", icon="🔄")
+            time.sleep(2)
             continue
 
-    raise RuntimeError(f"所有 AI 模型目前皆無回應，請稍後再試。（最後錯誤：{last_error}）")
+    raise RuntimeError(f"AI 暫時無法回應，請稍候 30 秒再試。（詳細原因：{last_error}）")
