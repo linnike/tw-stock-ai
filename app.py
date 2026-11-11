@@ -35,6 +35,7 @@ st.markdown(
 st.title("📈 台股全維度技術分析與 AI 100分獨立評分系統")
 
 gemini_key = st.secrets.get("GEMINI_API_KEY", "").strip()
+groq_key = st.secrets.get("GROQ_API_KEY", "").strip()
 finmind_token = st.secrets.get("FINMIND_TOKEN", "").strip()
 
 # --- 自選股本地端永久儲存管理 (watchlist.json) ---
@@ -195,8 +196,8 @@ with main_tab1:
 
         st.subheader("🤖 AI 100分獨立評分報告")
         if st.button("🚀 立即執行 AI 深度評分", type="primary"):
-            if not gemini_key:
-                st.error("請先在 .streamlit/secrets.toml 中設定 GEMINI_API_KEY！")
+            if not gemini_key and not groq_key:
+                st.error("請先在 Secrets 中設定 GEMINI_API_KEY 或 GROQ_API_KEY！")
             else:
                 with st.spinner("⚡ AI 正在快速運算評分中（約 3～8 秒）..."):
                     try:
