@@ -98,16 +98,17 @@ def fetch_stock_package(sid, days, token=""):
     return {"title": stock_title, "day": df_day, "week": df_week, "month": df_month, "data_text": data_text}
 
 
-# 台股主流權值與熱門題材股池（35檔，涵蓋半導體、AI、散熱、重電、記憶體、傳產、金融）
-CANDIDATE_POOL = [
-    "2330", "2454", "2317", "2382", "3231", "6669", "2357", "3017", "3324", "2376",
-    "3711", "2303", "3034", "2379", "3661", "3443", "2408", "2344", "3008", "2308",
-    "1513", "1519", "1503", "2603", "2609", "2615", "2002", "1301", "1303", "1802",
-    "1815", "6223", "2881", "2882", "2891"
+# 主流權值與熱門題材股池（符合 FinMind 免費版單股查詢限制）
+HOT_STOCK_POOL = [
+    "2330", "2317", "2454", "2382", "3231", "2308", "2303", "3711", "2357", "2376",
+    "3017", "3324", "6669", "3661", "3443", "2379", "3034", "2408", "2344", "3008",
+    "1513", "1519", "1503", "1504", "2603", "2609", "2615", "2618", "2610", "2881",
+    "2882", "2891", "2886", "2002", "1802",
 ]
 
+
 @st.cache_data(ttl=3600)
-def fetch_top_institutional_stocks(token=""):
+def fetch_top_institutional_stocks(token="", top_n=15):
     name_map = get_stock_name_map(token)
     dl = DataLoader()
     if token:
@@ -116,36 +117,34 @@ def fetch_top_institutional_stocks(token=""):
     start_date = (datetime.now() - timedelta(days=10)).strftime("%Y-%m-%d")
     records = []
 
-    for sid in CANDIDATE_POOL:
+    for sid in HOT_STOCK_POOL:
         try:
             df_inst = dl.taiwan_stock_institutional_investors(stock_id=sid, start_date=start_date)
             if df_inst.empty:
                 continue
-            df_inst["net"] = (df_inst["buy"] - df_inst["sell"]) / 1000.0
-            latest_date = df_inst["date"].max()
-            latest_net = df_inst[df_inst["date"] == latest_date]["net"].sum()
-            five_day_net = df_inst["net"].sum()
-            if latest_net > 0 or five_day_net > 0:
-                records.append({
-                    "sid": sid,
-                    "name": name_map.get(sid, ""),
-                    "date": latest_date,
-                    "latest_net": round(latest_net),
-                    "five_day_net": round(five_day_net),
-                })
+            df_inst["net_lot"] = (df_inst["buy"] - df_inst["sell"]) / 1000.0
+            daily_net = df_inst.groupby("date")["net_lot"].sum().sort_index()
+            latest_date = daily_net.index[-1]
+            latest_net = round(float(daily_net.iloc[-1]), 0)
+            sum5_net = round(float(daily_net.tail(5).sum()), 0)
+            records.append({
+                "sid": sid,
+                "name": name_map.get(sid, ""),
+                "date": latest_date,
+                "latest_net": latest_net,
+                "sum5_net": sum5_net,
+            })
         except Exception:
             continue
 
     if not records:
-        return None
+        return ""
 
-    df_rank = pd.DataFrame(records)
-    df_rank = df_rank.sort_values(by=["latest_net", "five_day_net"], ascending=False).head(15)
-    latest_dt = df_rank["date"].max()
-
-    lines = [f"【資料基準日】：{latest_dt}（近1日與近5日三大法人真實買超張數排行前15名）"]
-    for _, row in df_rank.iterrows():
+    df_rank = pd.DataFrame(records).sort_values(by=["sum5_net", "latest_net"], ascending=False).head(top_n)
+    latest_dt = df_rank["date"].iloc[0]
+    lines = [f"【最新資料基準日：{latest_dt}｜台股主流股池近5日三大法人買超排行前 {len(df_rank)} 名】"]
+    for idx, row in df_rank.iterrows():
         lines.append(
-            f"- {row['sid']} {row['name']}：最新單日法人淨買超 {row['latest_net']:+d} 張，近5日累計淨買超 {row['five_day_net']:+d} 張"
+            f"- {row['sid']} {row['name']}：最新單日法人買賣超 {int(row['latest_net']):+d} 張，近5日累計買超 {int(row['sum5_net']):+d} 張"
         )
     return "\n".join(lines)
