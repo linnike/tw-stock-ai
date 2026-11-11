@@ -7,7 +7,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
 
-from ai_service import run_gemini_analysis
+from ai_service import fetch_ai_top10_picks, run_gemini_analysis
 from data_fetcher import fetch_stock_package, get_stock_name_map
 
 mimetypes.add_type("application/javascript", ".js")
@@ -50,6 +50,7 @@ DEFAULT_WATCHLIST = {
     "0050": "元大台灣50",
 }
 
+
 def load_watchlist():
     if os.path.exists(WATCHLIST_FILE):
         try:
@@ -62,11 +63,21 @@ def load_watchlist():
     save_watchlist(DEFAULT_WATCHLIST)
     return DEFAULT_WATCHLIST.copy()
 
+
 def save_watchlist(watchlist_dict):
     with open(WATCHLIST_FILE, "w", encoding="utf-8") as f:
         json.dump(watchlist_dict, f, ensure_ascii=False, indent=2)
 
+
 watchlist = load_watchlist()
+
+# 初始化批量掃描輸入框狀態
+if "batch_input_str" not in st.session_state:
+    st.session_state["batch_input_str"] = ", ".join(list(watchlist.keys())[:10])
+if "ai_top10_report" not in st.session_state:
+    st.session_state["ai_top10_report"] = ""
+if "ai_top10_codes" not in st.session_state:
+    st.session_state["ai_top10_codes"] = []
 
 # --- 側邊欄：選股與自選股增刪管理 ---
 with st.sidebar:
@@ -198,18 +209,51 @@ with main_tab1:
             st.code(pkg["data_text"], language="text")
 
 with main_tab2:
+    # --- 區塊一：AI 盤後精選 10 檔潛力股 ---
+    st.subheader("🔥 AI 盤後精選 10 檔潛力股（即時連網籌碼與題材）")
+    col_pick1, col_pick2 = st.columns([1, 1])
+    with col_pick1:
+        if st.button("✨ AI 自動搜尋並推薦 10 檔潛力股", use_container_width=True):
+            if not gemini_key:
+                st.error("請先在 .streamlit/secrets.toml 中設定 GEMINI_API_KEY！")
+            else:
+                with st.spinner("🌐 AI 正在連網搜尋最新三大法人買超與漲價題材股..."):
+                    try:
+                        report_text, codes = fetch_ai_top10_picks(gemini_key)
+                        st.session_state["ai_top10_report"] = report_text
+                        st.session_state["ai_top10_codes"] = codes
+                    except Exception as e:
+                        st.error(f"AI 精選搜尋失敗：{e}")
+
+    if st.session_state["ai_top10_report"]:
+        with st.expander("📋 查看 AI 精選 10 檔推薦名單與理由", expanded=True):
+            st.markdown(st.session_state["ai_top10_report"])
+            if st.session_state["ai_top10_codes"]:
+                codes_preview = ", ".join(st.session_state["ai_top10_codes"])
+                st.info(f"偵測到的 10 檔代號：`{codes_preview}`")
+                if st.button("📥 一鍵帶入下方批量掃描器", type="primary"):
+                    st.session_state["batch_input_str"] = codes_preview
+                    st.rerun()
+
+    st.divider()
+
+    # --- 區塊二：自選股多檔批量掃描器 ---
     st.subheader("📋 自選股多檔批量掃描器（單次上限 10 檔）")
-    default_batch_str = ", ".join(list(watchlist.keys())[:10])
+    col_reset1, col_reset2 = st.columns([3, 1])
+    with col_reset2:
+        if st.button("🔄 恢復為我的常用自選股", use_container_width=True):
+            st.session_state["batch_input_str"] = ", ".join(list(watchlist.keys())[:10])
+            st.rerun()
+
     watchlist_input = st.text_input(
         "輸入自選股代號（請用逗號分隔，單次最多 10 檔以維持最佳速度與免費額度）",
-        value=default_batch_str,
+        key="batch_input_str",
     )
 
     if st.button("🔍 開始批量掃描自選股", type="primary"):
         if not gemini_key:
             st.error("請先在 .streamlit/secrets.toml 中設定 GEMINI_API_KEY！")
         else:
-            # 清理空白並自動去除重複輸入的代號
             stock_list = list(dict.fromkeys([s.strip() for s in watchlist_input.split(",") if s.strip()]))
 
             if not stock_list:
