@@ -9,10 +9,10 @@ from config import GEMINI_MODEL, SYSTEM_PROMPT
 FALLBACK_MODELS = [GEMINI_MODEL, "gemini-3.5-flash-lite", "gemini-3.6-flash"]
 
 def run_gemini_analysis(api_key, stock_data_text, is_batch=False):
-    # 設定 20000 毫秒（20 秒）超時，避免主模型尖峰塞車時傻等 3 分鐘
+    # 設定 35000 毫秒（35 秒）超時，避免主模型尖峰塞車時傻等 3 分鐘
     client = genai.Client(
         api_key=api_key,
-        http_options=types.HttpOptions(timeout=20000),
+        http_options=types.HttpOptions(timeout=35000),
     )
 
     if is_batch:
