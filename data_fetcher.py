@@ -17,6 +17,42 @@ def get_stock_name_map(token=""):
     return dict(zip(df_info["stock_id"], df_info["stock_name"]))
 
 @st.cache_data(ttl=3600)
+def fetch_top_institutional_stocks(token="", top_n=15):
+    """抓取最近一個交易日全市場三大法人買超前 N 名真實數據"""
+    dl = DataLoader()
+    if token:
+        dl.login_by_token(api_token=token)
+
+    name_map = get_stock_name_map(token)
+    # 往前推 7 天確保能抓到最近一個開盤日（避開週末或國定假日）
+    for delta in range(0, 8):
+        target_date = (datetime.now() - timedelta(days=delta)).strftime("%Y-%m-%d")
+        try:
+            df_inst = dl.taiwan_stock_institutional_investors(start_date=target_date, end_date=target_date)
+        except Exception:
+            continue
+
+        if df_inst is not None and not df_inst.empty:
+            df_inst["net_lot"] = ((df_inst["buy"] - df_inst["sell"]) / 1000).round(0)
+            # 僅篩選 4 碼一般上市櫃個股（排除權證與特殊金融債）
+            df_inst = df_inst[df_inst["stock_id"].str.match(r"^\d{4}$", na=False)]
+            summary = (
+                df_inst.groupby("stock_id")["net_lot"]
+                .sum()
+                .reset_index()
+                .sort_values("net_lot", ascending=False)
+                .head(top_n)
+            )
+            lines = [f"【資料交易日】：{target_date}（全市場三大法人合計買超前 {top_n} 名）"]
+            for _, row in summary.iterrows():
+                sid = row["stock_id"]
+                sname = name_map.get(sid, "")
+                net = int(row["net_lot"])
+                lines.append(f"- {sid} {sname}：三大法人合計買超 {net:,} 張")
+            return "\n".join(lines)
+    return ""
+
+@st.cache_data(ttl=3600)
 def fetch_stock_package(sid, days, token=""):
     name_map = get_stock_name_map(token)
     stock_name = name_map.get(sid, "")
