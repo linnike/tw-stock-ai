@@ -2,7 +2,7 @@
 from google import genai
 from config import GEMINI_MODEL, SYSTEM_PROMPT
 
-def run_gemini_analysis(api_key, stock_data_text, is_batch=False):
+def run_gemini_analysis_stream(api_key, stock_data_text, is_batch=False):
     client = genai.Client(api_key=api_key)
     if is_batch:
         prompt = (
@@ -15,7 +15,9 @@ def run_gemini_analysis(api_key, stock_data_text, is_batch=False):
             SYSTEM_PROMPT + "\n\n請根據以下真實盤後數據進行完整分析：\n" + stock_data_text
         )
 
-    response = client.models.generate_content(
+    response = client.models.generate_content_stream(
         model=GEMINI_MODEL, contents=prompt
     )
-    return response.text
+    for chunk in response:
+        if chunk.text:
+            yield chunk.text
