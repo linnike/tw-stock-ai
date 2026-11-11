@@ -7,7 +7,7 @@ import streamlit as st
 from config import GEMINI_MODEL, SYSTEM_PROMPT
 from data_fetcher import fetch_top_institutional_stocks
 
-FALLBACK_MODELS = [GEMINI_MODEL, "gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-2.5-flash-lite",]
+FALLBACK_MODELS = [GEMINI_MODEL, "gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-3.1-flash-lite",]
 
 BATCH_PROMPT = """你是一位專業股票技術分析師。請根據以下提供的盤後真實數據進行客觀、保守的獨立評估。
 【嚴格格式規範】：
