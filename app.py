@@ -198,30 +198,40 @@ with main_tab1:
             st.code(pkg["data_text"], language="text")
 
 with main_tab2:
-    st.subheader("📋 自選股多檔批量掃描器")
-    default_batch_str = ", ".join(watchlist.keys())
-    watchlist_input = st.text_input("輸入自選股代號（已自動同步您的常用自選股清單，亦可手動修改）", value=default_batch_str)
+    st.subheader("📋 自選股多檔批量掃描器（單次上限 10 檔）")
+    default_batch_str = ", ".join(list(watchlist.keys())[:10])
+    watchlist_input = st.text_input(
+        "輸入自選股代號（請用逗號分隔，單次最多 10 檔以維持最佳速度與免費額度）",
+        value=default_batch_str,
+    )
 
     if st.button("🔍 開始批量掃描自選股", type="primary"):
         if not gemini_key:
             st.error("請先在 .streamlit/secrets.toml 中設定 GEMINI_API_KEY！")
         else:
-            stock_list = [s.strip() for s in watchlist_input.split(",") if s.strip()]
-            progress_bar = st.progress(0)
-            results_container = st.container()
+            # 清理空白並自動去除重複輸入的代號
+            stock_list = list(dict.fromkeys([s.strip() for s in watchlist_input.split(",") if s.strip()]))
 
-            for idx, sid in enumerate(stock_list):
-                with st.spinner(f"正在抓取並評分 {sid} ({idx+1}/{len(stock_list)})..."):
-                    pkg = fetch_stock_package(sid, days_back, finmind_token)
-                    if pkg is None:
-                        results_container.warning(f"❌ **{sid}**：查無資料或代號錯誤。")
-                    else:
-                        try:
-                            summary_res = run_gemini_analysis(gemini_key, pkg["data_text"], is_batch=True)
-                            with results_container.expander(f"📌 {pkg['title']} 掃描結果（收盤 {pkg['day'].iloc[-1]['Close']:.2f} 元）", expanded=True):
-                                st.markdown(summary_res)
-                        except Exception as e:
-                            results_container.error(f"❌ **{sid}** 分析失敗：{e}")
-                progress_bar.progress((idx + 1) / len(stock_list))
-                time.sleep(1)
-            st.success("✅ 所有自選股批量掃描完成！")
+            if not stock_list:
+                st.warning("請至少輸入 1 檔股票代號！")
+            elif len(stock_list) > 10:
+                st.error(f"⚠️ 您目前輸入了 **{len(stock_list)}** 檔股票，單次批量掃描上限為 **10 檔**。請刪減部分代號後再執行，以免觸發免費版 API 速率限制。")
+            else:
+                progress_bar = st.progress(0)
+                results_container = st.container()
+
+                for idx, sid in enumerate(stock_list):
+                    with st.spinner(f"正在抓取並評分 {sid} ({idx+1}/{len(stock_list)})..."):
+                        pkg = fetch_stock_package(sid, days_back, finmind_token)
+                        if pkg is None:
+                            results_container.warning(f"❌ **{sid}**：查無資料或代號錯誤。")
+                        else:
+                            try:
+                                summary_res = run_gemini_analysis(gemini_key, pkg["data_text"], is_batch=True)
+                                with results_container.expander(f"📌 {pkg['title']} 掃描結果（收盤 {pkg['day'].iloc[-1]['Close']:.2f} 元）", expanded=True):
+                                    st.markdown(summary_res)
+                            except Exception as e:
+                                results_container.error(f"❌ **{sid}** 分析失敗：{e}")
+                    progress_bar.progress((idx + 1) / len(stock_list))
+                    time.sleep(1.5)
+                st.success("✅ 所有自選股批量掃描完成！")
