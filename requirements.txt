@@ -1,0 +1,6 @@
+streamlit
+FinMind
+google-genai
+pandas
+ta
+plotly
