@@ -17,42 +17,6 @@ def get_stock_name_map(token=""):
     return dict(zip(df_info["stock_id"], df_info["stock_name"]))
 
 @st.cache_data(ttl=3600)
-def fetch_top_institutional_stocks(token="", top_n=15):
-    """抓取最近一個交易日全市場三大法人買超前 N 名真實數據"""
-    dl = DataLoader()
-    if token:
-        dl.login_by_token(api_token=token)
-
-    name_map = get_stock_name_map(token)
-    # 往前推 7 天確保能抓到最近一個開盤日（避開週末或國定假日）
-    for delta in range(0, 8):
-        target_date = (datetime.now() - timedelta(days=delta)).strftime("%Y-%m-%d")
-        try:
-            df_inst = dl.taiwan_stock_institutional_investors(start_date=target_date, end_date=target_date)
-        except Exception:
-            continue
-
-        if df_inst is not None and not df_inst.empty:
-            df_inst["net_lot"] = ((df_inst["buy"] - df_inst["sell"]) / 1000).round(0)
-            # 僅篩選 4 碼一般上市櫃個股（排除權證與特殊金融債）
-            df_inst = df_inst[df_inst["stock_id"].str.match(r"^\d{4}$", na=False)]
-            summary = (
-                df_inst.groupby("stock_id")["net_lot"]
-                .sum()
-                .reset_index()
-                .sort_values("net_lot", ascending=False)
-                .head(top_n)
-            )
-            lines = [f"【資料交易日】：{target_date}（全市場三大法人合計買超前 {top_n} 名）"]
-            for _, row in summary.iterrows():
-                sid = row["stock_id"]
-                sname = name_map.get(sid, "")
-                net = int(row["net_lot"])
-                lines.append(f"- {sid} {sname}：三大法人合計買超 {net:,} 張")
-            return "\n".join(lines)
-    return ""
-
-@st.cache_data(ttl=3600)
 def fetch_stock_package(sid, days, token=""):
     name_map = get_stock_name_map(token)
     stock_name = name_map.get(sid, "")
@@ -132,3 +96,56 @@ def fetch_stock_package(sid, days, token=""):
 【近3個月單月合併營收】：\n{rev_summary}
 """
     return {"title": stock_title, "day": df_day, "week": df_week, "month": df_month, "data_text": data_text}
+
+
+# 台股主流權值與熱門題材股池（35檔，涵蓋半導體、AI、散熱、重電、記憶體、傳產、金融）
+CANDIDATE_POOL = [
+    "2330", "2454", "2317", "2382", "3231", "6669", "2357", "3017", "3324", "2376",
+    "3711", "2303", "3034", "2379", "3661", "3443", "2408", "2344", "3008", "2308",
+    "1513", "1519", "1503", "2603", "2609", "2615", "2002", "1301", "1303", "1802",
+    "1815", "6223", "2881", "2882", "2891"
+]
+
+@st.cache_data(ttl=3600)
+def fetch_top_institutional_stocks(token=""):
+    name_map = get_stock_name_map(token)
+    dl = DataLoader()
+    if token:
+        dl.login_by_token(api_token=token)
+
+    start_date = (datetime.now() - timedelta(days=10)).strftime("%Y-%m-%d")
+    records = []
+
+    for sid in CANDIDATE_POOL:
+        try:
+            df_inst = dl.taiwan_stock_institutional_investors(stock_id=sid, start_date=start_date)
+            if df_inst.empty:
+                continue
+            df_inst["net"] = (df_inst["buy"] - df_inst["sell"]) / 1000.0
+            latest_date = df_inst["date"].max()
+            latest_net = df_inst[df_inst["date"] == latest_date]["net"].sum()
+            five_day_net = df_inst["net"].sum()
+            if latest_net > 0 or five_day_net > 0:
+                records.append({
+                    "sid": sid,
+                    "name": name_map.get(sid, ""),
+                    "date": latest_date,
+                    "latest_net": round(latest_net),
+                    "five_day_net": round(five_day_net),
+                })
+        except Exception:
+            continue
+
+    if not records:
+        return None
+
+    df_rank = pd.DataFrame(records)
+    df_rank = df_rank.sort_values(by=["latest_net", "five_day_net"], ascending=False).head(15)
+    latest_dt = df_rank["date"].max()
+
+    lines = [f"【資料基準日】：{latest_dt}（近1日與近5日三大法人真實買超張數排行前15名）"]
+    for _, row in df_rank.iterrows():
+        lines.append(
+            f"- {row['sid']} {row['name']}：最新單日法人淨買超 {row['latest_net']:+d} 張，近5日累計淨買超 {row['five_day_net']:+d} 張"
+        )
+    return "\n".join(lines)
