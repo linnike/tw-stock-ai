@@ -85,7 +85,7 @@ with st.sidebar:
     st.header("📌 單股深度分析設定")
 
     options = [f"{sid} {name}".strip() for sid, name in watchlist.items()]
-    options.append("✏️ 手動輸入其他代號")
+    options.insert(0, "✏️ 手動輸入其他代號")
 
     selected_label = st.selectbox("常用自選股快捷選單", options)
     if selected_label == "✏️ 手動輸入其他代號":
