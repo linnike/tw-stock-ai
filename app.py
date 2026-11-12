@@ -137,7 +137,8 @@ with main_tab1:
         latest, prev = df_d.iloc[-1], df_d.iloc[-2]
         chg = latest["Close"] - prev["Close"]
         chg_pct = (chg / prev["Close"]) * 100
-
+        latest_date = df_d.index[-1].strftime("%Y-%m-%d")
+        
         c1, c2, c3, c4 = st.columns(4)
         c1.metric(
             f"{pkg['title']} 最新收盤 ({latest_date})",
