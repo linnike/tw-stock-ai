@@ -139,7 +139,11 @@ with main_tab1:
         chg_pct = (chg / prev["Close"]) * 100
 
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric(f"{pkg['title']} 最新收盤", f"{latest['Close']:.2f}", f"{chg:+.2f} ({chg_pct:+.2f}%)")
+        c1.metric(
+            f"{pkg['title']} 最新收盤 ({latest_date})",
+            f"{latest['Close']:.2f}",
+            f"{chg:+.2f} ({chg_pct:+.2f}%)",
+        )
         c2.metric("成交量 (張)", f"{int(latest['Volume_Lot']):,}")
         c3.metric("日線 9K / 9D", f"{latest['KD_K']:.1f} / {latest['KD_D']:.1f}")
         c4.metric("日線 5RSI / 10RSI", f"{latest['RSI_5']:.1f} / {latest['RSI_10']:.1f}")
